@@ -1,0 +1,151 @@
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <UniversalTelegramBot.h>
+#include <ArduinoJson.h>
+
+#include <MD_Parola.h>
+#include <MD_MAX72xx.h>
+#include <SPI.h>
+
+// ===== WIFI + TELEGRAM =====
+#define WIFI_SSID     ""
+#define WIFI_PASSWORD ""
+#define BOT_TOKEN     "8363018285:AAH1RhkD_sKPlOlJj6DZi3VC-yd9nKEFmBk"
+#define CHAT_ID       "7908827914"
+
+WiFiClientSecure client;
+UniversalTelegramBot bot(BOT_TOKEN, client);
+
+// ===== BUTTONS =====
+#define BTN1 27
+#define BTN2 26
+#define BTN3 25
+#define BTN4 33
+#define BTN5 32
+
+bool p1=1, p2=1, p3=1, p4=1, p5=1;
+
+// ===== LED MATRIX =====
+#define HARDWARE_TYPE MD_MAX72XX::FC16_HW
+#define MAX_DEVICES 4          // CHANGE to your actual module count
+
+#define DATA_PIN 23
+#define CLK_PIN  18
+#define CS_PIN   5
+
+MD_Parola display(
+  HARDWARE_TYPE,
+  DATA_PIN,
+  CLK_PIN,
+  CS_PIN,
+  MAX_DEVICES
+);
+
+// ===== TELEGRAM TIMING =====
+unsigned long lastTelegramCheck = 0;
+const unsigned long TELEGRAM_INTERVAL = 3000;
+
+// ===== DISPLAY FUNCTION =====
+void showMessage(const char *msg) {
+  display.displayClear();
+  display.displayText(
+    msg,
+    PA_LEFT,
+    60,                 // scroll speed
+    0,
+    PA_SCROLL_LEFT,
+    PA_SCROLL_LEFT
+  );
+}
+
+// ===== TELEGRAM RECEIVE =====
+void checkTelegram() {
+  int n = bot.getUpdates(bot.last_message_received + 1);
+  while (n) {
+    for (int i = 0; i < n; i++) {
+      if (bot.messages[i].chat_id != CHAT_ID) continue;
+
+      char buf[32];
+      bot.messages[i].text.toCharArray(buf, sizeof(buf));
+
+      showMessage(buf);   // override display
+    }
+    n = bot.getUpdates(bot.last_message_received + 1);
+  }
+}
+
+// ===== SETUP =====
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(BTN1, INPUT_PULLUP);
+  pinMode(BTN2, INPUT_PULLUP);
+  pinMode(BTN3, INPUT_PULLUP);
+  pinMode(BTN4, INPUT_PULLUP);
+  pinMode(BTN5, INPUT_PULLUP);
+
+  // Display init
+  display.begin();
+  display.setIntensity(6);
+  display.displayClear();
+
+  // WiFi + Telegram
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  client.setInsecure();
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(300);
+  }
+
+  Serial.println("WiFi connected");
+}
+
+// ===== LOOP =====
+void loop() {
+
+  // ---- DISPLAY MUST RUN FIRST ----
+  if (display.displayAnimate()) {
+    display.displayReset();
+  }
+
+  // ---- TELEGRAM (non-blocking) ----
+  if (millis() - lastTelegramCheck > TELEGRAM_INTERVAL) {
+    checkTelegram();
+    lastTelegramCheck = millis();
+  }
+
+  // ---- BUTTON READ ----
+  bool b1 = digitalRead(BTN1);
+  bool b2 = digitalRead(BTN2);
+  bool b3 = digitalRead(BTN3);
+  bool b4 = digitalRead(BTN4);
+  bool b5 = digitalRead(BTN5);
+
+  if (p1 && !b1) {
+    bot.sendMessage(CHAT_ID, "I NEED WATER", "");
+    showMessage("I NEED WATER");
+  }
+
+  if (p2 && !b2) {
+    bot.sendMessage(CHAT_ID, "I NEED FOOD", "");
+    showMessage("I NEED FOOD");
+  }
+
+  if (p3 && !b3) {
+    bot.sendMessage(CHAT_ID, "I AM NOT FEELING WELL", "");
+    showMessage("I AM NOT FEELING WELL");
+  }
+
+  if (p4 && !b4) {
+    bot.sendMessage(CHAT_ID, "PLEASE COME HERE", "");
+    showMessage("PLEASE COME HERE");
+  }
+
+  if (p5 && !b5) {
+    bot.sendMessage(CHAT_ID, "I NEED ASSISTANCE FROM THE TEACHER", "");
+    showMessage("I NEED ASSISTANCE ");
+  }
+
+  p1=b1; p2=b2; p3=b3; p4=b4; p5=b5;
+}
